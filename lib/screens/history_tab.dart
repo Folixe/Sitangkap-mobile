@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
 
 class HistoryTab extends StatefulWidget {
   const HistoryTab({super.key});
@@ -12,11 +14,24 @@ class HistoryTab extends StatefulWidget {
 class _HistoryTabState extends State<HistoryTab> {
   List<dynamic> _catches = [];
   bool _isLoading = true;
+  Timer? _refreshTimer;
+  StreamSubscription? _socketSub;
 
   @override
   void initState() {
     super.initState();
     _fetchCatches();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (mounted) await _fetchCatches();
+    });
+    _startSocket();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _socketSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchCatches() async {
@@ -29,6 +44,21 @@ class _HistoryTabState extends State<HistoryTab> {
     } else {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _startSocket() async {
+    try {
+      await SocketService().connect();
+      _socketSub = SocketService().stream.listen((event) async {
+        try {
+          if (event is Map && (event['type'] == 'catch_created' || event['type'] == 'catches_updated')) {
+            if (mounted) await _fetchCatches();
+          }
+        } catch (_) {
+          if (mounted) await _fetchCatches();
+        }
+      }, onError: (_) {});
+    } catch (_) {}
   }
 
   @override

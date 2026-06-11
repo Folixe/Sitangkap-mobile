@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import '../services/socket_service.dart';
 import '../services/api_service.dart';
 import 'input_catch_screen.dart';
 import 'history_tab.dart';
@@ -16,11 +18,29 @@ class _HomeTabState extends State<HomeTab> {
   List<dynamic> _catches = [];
   bool _isLoading = true;
   double _monthlyWeight = 0.0;
+  Timer? _refreshTimer;
+  StreamSubscription? _socketSub;
 
   @override
   void initState() {
     super.initState();
     _fetchData();
+    _startPolling();
+    _startSocket();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _socketSub?.cancel();
+    super.dispose();
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (mounted) await _fetchData();
+    });
   }
 
   Future<void> _fetchData() async {
@@ -57,6 +77,23 @@ class _HomeTabState extends State<HomeTab> {
     setState(() {
       _monthlyWeight = total;
     });
+  }
+
+  void _startSocket() async {
+    try {
+      await SocketService().connect();
+      _socketSub = SocketService().stream.listen((event) async {
+        // If backend sends an event indicating new catches, refresh
+        try {
+          if (event is Map && (event['type'] == 'catch_created' || event['type'] == 'catches_updated')) {
+            if (mounted) await _fetchData();
+          }
+        } catch (_) {
+          // fallback: refresh on any message
+          if (mounted) await _fetchData();
+        }
+      }, onError: (_) {});
+    } catch (_) {}
   }
 
   @override

@@ -1,9 +1,11 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'camera_screen.dart';
 import '../services/api_service.dart';
 import '../widgets/dash_rect_painter.dart';
+
 
 class InputCatchScreen extends StatefulWidget {
   const InputCatchScreen({super.key});
@@ -15,7 +17,8 @@ class InputCatchScreen extends StatefulWidget {
 class _InputCatchScreenState extends State<InputCatchScreen> {
   final _beratController = TextEditingController();
   DateTime _tanggalMelaut = DateTime.now();
-  File? _imageFile;
+  XFile? _imageFile;
+  Uint8List? _imageBytes;
   final ImagePicker _picker = ImagePicker();
   
   bool _isLoadingReference = true;
@@ -67,9 +70,17 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
                 title: const Text('Ambil Foto dari Kamera'),
                 onTap: () async {
                   Navigator.of(context).pop();
-                  final XFile? image = await _picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+                  final XFile? image = await Navigator.of(context).push<XFile?>(
+                    MaterialPageRoute(
+                      builder: (context) => const CameraScreen(),
+                    ),
+                  );
                   if (image != null) {
-                    setState(() => _imageFile = File(image.path));
+                    final bytes = await image.readAsBytes();
+                    setState(() {
+                      _imageFile = image;
+                      _imageBytes = bytes;
+                    });
                   }
                 },
               ),
@@ -80,7 +91,11 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
                   Navigator.of(context).pop();
                   final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
                   if (image != null) {
-                    setState(() => _imageFile = File(image.path));
+                    final bytes = await image.readAsBytes();
+                    setState(() {
+                      _imageFile = image;
+                      _imageBytes = bytes;
+                    });
                   }
                 },
               ),
@@ -101,22 +116,31 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
 
     setState(() => _isSubmitting = true);
 
+    final beratValue = double.tryParse(_beratController.text.replaceAll(',', '.'));
+    if (beratValue == null) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Format berat tidak valid. Gunakan angka, misal 2.5')),
+      );
+      return;
+    }
+
     final response = await ApiService.storeCatch(
       tanggal: DateFormat('yyyy-MM-dd').format(_tanggalMelaut),
       jenisIkanId: _selectedJenisIkanId!,
-      berat: double.parse(_beratController.text),
+      berat: beratValue,
       fotoFile: _imageFile!,
     );
 
     setState(() => _isSubmitting = false);
 
     if (response['status'] == 'success') {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data tangkapan berhasil dikirim dan menunggu verifikasi admin.')),
-        );
-        Navigator.of(context).pop();
-      }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Data tangkapan berhasil dikirim dan menunggu verifikasi admin.')),
+          );
+          Navigator.of(context).pop(true);
+        }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -293,7 +317,7 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
                           height: 220,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(24),
-                            image: DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover),
+                            image: DecorationImage(image: MemoryImage(_imageBytes!), fit: BoxFit.cover),
                             border: Border.all(color: Colors.grey.shade200),
                           ),
                           child: Stack(
@@ -304,7 +328,7 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
                                 child: ElevatedButton(
                                   onPressed: _pickImage,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white.withOpacity(0.9),
+                                    backgroundColor: Colors.white.withValues(alpha: 0.9),
                                     foregroundColor: const Color(0xFF0F172A),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                                     elevation: 2,
@@ -334,6 +358,8 @@ class _InputCatchScreenState extends State<InputCatchScreen> {
                 ],
               ),
             ),
+          ),
     );
   }
 }
+

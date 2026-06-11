@@ -1,8 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:path/path.dart' as path;
+import 'package:image_picker/image_picker.dart';
+
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, 127.0.0.1 for desktop/web, or your local network IP (e.g. 192.168.1.8)
@@ -209,7 +212,7 @@ class ApiService {
     required String tanggal,
     required String jenisIkanId,
     required double berat,
-    required File fotoFile,
+    required XFile fotoFile,
   }) async {
     final token = await getToken();
     if (token == null) return {'status': 'error', 'message': 'Unauthorized'};
@@ -245,7 +248,7 @@ class ApiService {
     required String tanggal,
     required String jenisIkanId,
     required double berat,
-    required File fotoFile,
+    required XFile fotoFile,
   }) async {
     final request = http.MultipartRequest('POST', Uri.parse(url));
     request.headers.addAll({
@@ -257,20 +260,41 @@ class ApiService {
     request.fields['jenis_ikan_id'] = jenisIkanId;
     request.fields['berat'] = berat.toString();
 
-    final fileStream = http.ByteStream(fotoFile.openRead());
-    final length = await fotoFile.length();
-    
-    final multipartFile = http.MultipartFile(
+    final bytes = await fotoFile.readAsBytes();
+    final filename = path.basename(fotoFile.path);
+
+    final multipartFile = http.MultipartFile.fromBytes(
       'foto',
-      fileStream,
-      length,
-      filename: fotoFile.path.split('/').last,
+      bytes,
+      filename: filename,
       contentType: MediaType('image', 'jpeg'),
     );
 
     request.files.add(multipartFile);
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-    return jsonDecode(response.body);
+    // Debug logging to help troubleshooting uploads
+    if (kDebugMode) {
+      try {
+        print('[_multipartSubmit] URL: $url');
+        print('[_multipartSubmit] Status: ${response.statusCode}');
+        print('[_multipartSubmit] Body: ${response.body}');
+      } catch (_) {}
+    }
+
+    // Try to parse JSON if possible, otherwise return an error with status
+    try {
+      final body = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return body is Map<String, dynamic> ? body : {'status': 'success', 'data': body};
+      }
+      // If server returned an error, try to extract message
+      if (body is Map<String, dynamic> && body['message'] != null) {
+        return {'status': 'error', 'message': body['message']};
+      }
+      return {'status': 'error', 'message': 'Server returned ${response.statusCode}'};
+    } catch (e) {
+      return {'status': 'error', 'message': 'Invalid server response.'};
+    }
   }
 }
