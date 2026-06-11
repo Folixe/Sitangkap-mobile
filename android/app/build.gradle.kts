@@ -4,6 +4,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = java.util.Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.sitangkap.sitangkap_app"
     compileSdk = flutter.compileSdkVersion
@@ -27,9 +33,13 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // TODO: Add your own signing config for the release build.
+                // Signing with the debug keys while no `key.properties` provided.
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }
@@ -42,4 +52,16 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Configure signingConfigs after android block to avoid Kotlin DSL ordering issues
+signingConfigs {
+    if (keystorePropertiesFile.exists()) {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
+        }
+    }
 }

@@ -1,0 +1,7 @@
+## Copy this file to `android/key.properties` and fill values before building release.
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=sitangkap
+storeFile=key.jks
+
+## Example: storeFile can be a relative path inside the android folder, e.g. `key.jks`
